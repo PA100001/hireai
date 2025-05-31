@@ -13,6 +13,116 @@ const { jobseekerRole, recruiterRole, adminRole, resumeFolder, profilePictureFol
 const config = require('../config'); // For GCP bucket name
 const { getGCPBucket } = require('../config/gcpBucket');
 const astraDbFunction = require('../config/datastaxAstra');
+const { getCoordinatesFromPincode, calculateDistance } = require('../utils/locationUtils');
+const extractTextFromPdfAndWord = require('../utils/extractTextFromPdfAndWord');
+const { rootPath } = require('../constants');
+const groq = require('../config/groq');
+const {extractTextFromPdfPromt} = require('../promptMessages/resumeParsingPrompt')
+
+async function storeJobSeekerProfileToAstra(jobSeekerProfile) {
+  const companies = jobSeekerProfile.workExperience?.map((exp) => exp.company) || [];
+  const jobTitles = jobSeekerProfile.workExperience?.map((exp) => exp.jobTitle) || [];
+  const projectTechnologies = jobSeekerProfile.projects?.flatMap((p) => p.technologies || []) || [];
+  const certificationNames = jobSeekerProfile.certifications?.map((c) => c.name) || [];
+
+  const data = {
+    id: req.user._id.toString(),
+    // Location
+    city: jobSeekerProfile.location?.city,
+    state: jobSeekerProfile.location?.state,
+    country: jobSeekerProfile.location?.country,
+    lat: jobSeekerProfile.location?.lat,
+    lon: jobSeekerProfile.location?.lon,
+    // Experience & Professional Level
+    yearsOfExperience: jobSeekerProfile.yearsOfExperience,
+    seniorityLevel: jobSeekerProfile.seniorityLevel,
+
+    // Work Preferences
+    openToRemote: jobSeekerProfile.openToRemote,
+    openToRelocation: jobSeekerProfile.openToRelocation,
+    desiredEmploymentTypes: jobSeekerProfile.desiredEmploymentTypes,
+    desiredIndustries: jobSeekerProfile.desiredIndustries,
+    preferredLocations: jobSeekerProfile.preferredLocations,
+
+    // Skills & Tech
+    skills: jobSeekerProfile.skills,
+    techStack: jobSeekerProfile.techStack,
+
+    // Salary Expectations
+    salaryMin: jobSeekerProfile.salaryExpectation?.min,
+    salaryMax: jobSeekerProfile.salaryExpectation?.max,
+    salaryCurrency: jobSeekerProfile.salaryExpectation?.currency,
+    salaryPeriod: jobSeekerProfile.salaryExpectation?.period,
+
+    // Availability
+    availableFrom: jobSeekerProfile.availableFrom,
+    jobSearchStatus: jobSeekerProfile.jobSearchStatus,
+
+    companies,
+    jobTitles,
+    projectTechnologies,
+    certificationNames,
+  };
+
+  const vectorText = `
+    Headline: ${jobSeekerProfile.headline || ''}
+    Bio: ${jobSeekerProfile.bio || ''}
+    Current Position: ${jobSeekerProfile.currentJobTitle || ''} at ${jobSeekerProfile.currentCompany || ''}
+    Skills: ${(jobSeekerProfile.skills || []).join(', ')}
+    Tech Stack: ${(jobSeekerProfile.techStack || []).join(', ')}
+
+    Work Experience:
+    ${(jobSeekerProfile.workExperience || [])
+      .map(
+        (exp) => `
+    ${exp.jobTitle} at ${exp.company} (${exp.startDate?.toISOString().slice(0, 10)} - ${
+          exp.currentlyWorking ? 'Present' : exp.endDate?.toISOString().slice(0, 10)
+        })
+    Location: ${exp.location}
+    Description: ${exp.description}
+    Achievements: ${(exp.achievements || []).join('; ')}
+    Technologies Used: ${(exp.technologiesUsed || []).join(', ')}`
+      )
+      .join('\n')}
+
+    Projects:
+    ${(jobSeekerProfile.projects || [])
+      .map(
+        (proj) => `
+    ${proj.name}: ${proj.description}
+    Technologies: ${(proj.technologies || []).join(', ')}`
+      )
+      .join('\n')}
+
+    Certifications:
+    ${(jobSeekerProfile.certifications || [])
+      .map(
+        (cert) => `
+    ${cert.name} from ${cert.issuingOrganization} (Issued: ${cert.issueDate?.toISOString().slice(0, 10)})`
+      )
+      .join('\n')}`;
+
+  const astraDb = astraDbFunction();
+  const collection = astraDb.collection(process.env.ASTRA_RESUME_COLLECTION_NAME);
+  try {
+    if (jobSeekerProfile.vectorId) {
+      const result = await collection.deleteOne({
+        _id: jobSeekerProfile.vectorId,
+      });
+      logger.info('Previous Vector File Deleted');
+    }
+    const result = await collection.insertOne({
+      ...data,
+      $vectorize: vectorText,
+    });
+    jobSeekerProfile.vectorId = result.insertedId;
+    await jobSeekerProfile.save();
+  } catch (error) {
+    logger.error(error);
+    return errorResponse(res, 500, '', error);
+  }
+}
+
 exports.getMe = catchAsync(async (req, res, next) => {
   // req.user is populated by the 'protect' middleware, including the profile
   if (!req.user) {
@@ -76,6 +186,7 @@ exports.updateMe = catchAsync(async (req, res, next) => {
       { $set: { ...profileUpdates } },
       { new: true, runValidators: true, context: 'query' }
     );
+    storeJobSeekerProfileToAstra(updatedProfile);
     if (!updatedProfile) {
       // This can happen if the JobSeekerProfile was somehow deleted or never created.
       // At registration, a profile should always be created.
@@ -87,6 +198,7 @@ exports.updateMe = catchAsync(async (req, res, next) => {
         email: profileUpdates.email || req.user.email,
         fullName: profileUpdates.fullName || userUpdateFields.name || req.user.name,
       });
+      storeJobSeekerProfileToAstra(updatedProfile);
     }
   } else if (req.user.role == recruiterRole) {
     // updatedProfile = await RecruiterProfile.findOneAndUpdate({ user: userId }, profileUpdates, { new: true, runValidators: true, upsert: false });
@@ -199,51 +311,58 @@ exports.uploadResume = catchAsync(async (req, res, next) => {
     });
     return next(new AppError('Job Seeker profile not found.', 404));
   }
-  return successResponse(res, 200, jobSeekerProfile);
 
-  const astraDb = astraDbFunction();
-  const collection = astraDb.collection(process.env.ASTRA_RESUME_COLLECTION_NAME);
-  try {
-    const result = await collection.insertOne({
-      name: 'Jane Doe',
-      age: 42,
-      $vectorize: 'Text to vectorize for this document',
-    });
-  } catch (error) {
-    if (error instanceof CollectionInsertManyError) {
-      logger.error(error.insertedIds());
-    }
-    logger.error(error);
+  const pdfText = await extractTextFromPdfAndWord(req.file.path);
+  const chatCompletion = await groq.chat.completions.create({
+    messages: [
+      {
+        role: 'system',
+        content: extractTextFromPdfPromt
+      },
+      {
+        role: 'user',
+        content: pdfText,
+      },
+    ],
+    // model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+    model: 'meta-llama/llama-4-maverick-17b-128e-instruct',
+    temperature: 1,
+    max_completion_tokens: 1024,
+    top_p: 1,
+    stream: false,
+    response_format: {
+      type: 'json_object',
+    },
+    stop: null,
+  });
 
-    return errorResponse(res, 500, '', error);
-  }
-  return successResponse(res, 200, astraDb);
+  let updateJobSeekerData = JSON.parse(chatCompletion.choices[0].message.content)
+    const updatedProfile = await JobSeekerProfile.findOneAndUpdate(
+      { user: req.user._id },
+      { $set: updateJobSeekerData  },
+      { new: true, runValidators: true, context: 'query' }
+    );
+  storeJobSeekerProfileToAstra(updatedProfile);
 
   const bucket = await getGCPBucket();
-  const gcsResumeFolder = resumeFolder;
-  // Use a unique name for GCS, can be based on multer's generated filename or a new one
-  // req.file.filename is the name of the temporary local file
+  const gcpResumeFolder = resumeFolder;
   const gcsFileName = `${req.file.filename}`;
-  const gcsFilePath = `${gcsResumeFolder}/${gcsFileName}`;
+  const gcsFilePath = `${gcpResumeFolder}/${gcsFileName}`;
 
   try {
-    // Delete old resume from GCS if it exists
     if (jobSeekerProfile.resumeGCSPath) {
       try {
         await bucket.file(jobSeekerProfile.resumeGCSPath).delete({ ignoreNotFound: true });
         logger.info(`Old resume deleted from GCS: ${jobSeekerProfile.resumeGCSPath}`);
       } catch (gcsDeleteError) {
         logger.error(`Failed to delete old resume from GCS: ${jobSeekerProfile.resumeGCSPath}`, gcsDeleteError);
-        // Continue, as this is not critical enough to stop new upload
       }
     }
 
-    // Upload to GCS
     await bucket.upload(req.file.path, {
       destination: gcsFilePath,
       metadata: {
         contentType: req.file.mimetype,
-        // Add any other metadata you need
         metadata: {
           originalFilename: req.file.originalname,
           userId: req.user.id.toString(),
@@ -253,7 +372,6 @@ exports.uploadResume = catchAsync(async (req, res, next) => {
     });
     logger.info(`Resume uploaded to GCS: ${gcsFilePath}`);
 
-    // Update JobSeekerProfile
     jobSeekerProfile.resumeGCSPath = gcsFilePath;
     jobSeekerProfile.resumeOriginalName = req.file.originalname;
     jobSeekerProfile.resumeMimeType = req.file.mimetype;
@@ -267,8 +385,6 @@ exports.uploadResume = catchAsync(async (req, res, next) => {
 
     const user = await User.findById(req.user._id).populate({
       path: 'profile',
-      // Select specific fields from JobSeekerProfile if needed
-      // select: 'github linkedin portfolio location bio skills resumeGCSPath resumeOriginalName'
     });
 
     return successResponse(res, 200, 'Resume uploaded successfully.', user);
