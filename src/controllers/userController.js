@@ -17,7 +17,7 @@ const { getCoordinatesFromPincode, calculateDistance } = require('../utils/locat
 const extractTextFromPdfAndWord = require('../utils/extractTextFromPdfAndWord');
 const { rootPath } = require('../constants');
 const groq = require('../config/groq');
-const {extractTextFromPdfPromt} = require('../promptMessages/resumeParsingPrompt')
+const { extractTextFromPdfPromt } = require('../promptMessages/resumeParsingPrompt');
 
 async function storeJobSeekerProfileToAstra(jobSeekerProfile) {
   const companies = jobSeekerProfile.workExperience?.map((exp) => exp.company) || [];
@@ -106,17 +106,24 @@ async function storeJobSeekerProfileToAstra(jobSeekerProfile) {
   const collection = astraDb.collection(process.env.ASTRA_RESUME_COLLECTION_NAME);
   try {
     if (jobSeekerProfile.vectorId) {
-      const result = await collection.deleteOne({
-        _id: jobSeekerProfile.vectorId,
-      });
+      const result = await collection.findOneAndReplace(
+        {
+          _id: jobSeekerProfile.vectorId,
+        },
+        {
+          ...data,
+          $vectorize: vectorText,
+        }
+      );
       logger.info('Previous Vector File Deleted');
+    } else {
+      const result = await collection.insertOne({
+        ...data,
+        $vectorize: vectorText,
+      });
+      jobSeekerProfile.vectorId = result.insertedId;
+      await jobSeekerProfile.save();
     }
-    const result = await collection.insertOne({
-      ...data,
-      $vectorize: vectorText,
-    });
-    jobSeekerProfile.vectorId = result.insertedId;
-    await jobSeekerProfile.save();
   } catch (error) {
     logger.error(error);
     return errorResponse(res, 500, '', error);
@@ -317,7 +324,7 @@ exports.uploadResume = catchAsync(async (req, res, next) => {
     messages: [
       {
         role: 'system',
-        content: extractTextFromPdfPromt
+        content: extractTextFromPdfPromt,
       },
       {
         role: 'user',
@@ -336,12 +343,12 @@ exports.uploadResume = catchAsync(async (req, res, next) => {
     stop: null,
   });
 
-  let updateJobSeekerData = JSON.parse(chatCompletion.choices[0].message.content)
-    const updatedProfile = await JobSeekerProfile.findOneAndUpdate(
-      { user: req.user._id },
-      { $set: updateJobSeekerData  },
-      { new: true, runValidators: true, context: 'query' }
-    );
+  let updateJobSeekerData = JSON.parse(chatCompletion.choices[0].message.content);
+  const updatedProfile = await JobSeekerProfile.findOneAndUpdate(
+    { user: req.user._id },
+    { $set: updateJobSeekerData },
+    { new: true, runValidators: true, context: 'query' }
+  );
   storeJobSeekerProfileToAstra(updatedProfile);
 
   const bucket = await getGCPBucket();
