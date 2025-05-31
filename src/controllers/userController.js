@@ -15,6 +15,9 @@ const {
   resumeFolder,
   profilePictureFolder,
 } = require("../constants");
+const config = require("../config"); // For GCP bucket name
+const { getGCPBucket } = require("../config/gcpBucket");
+
 exports.getMe = catchAsync(async (req, res, next) => {
   // req.user is populated by the 'protect' middleware, including the profile
   if (!req.user) {
@@ -121,7 +124,7 @@ exports.uploadProfilePicture = catchAsync(async (req, res, next) => {
     // Construct a unique public_id including the folder and user context
     // req.file.filename is unique due to timestamp and user ID (if included by Multer config)
     cloudinaryResult = await cloudinary.uploader.upload(req.file.path, {
-      public_id: req.file.filename.split('/').pop().split('.')[0],
+      public_id: req.file.filename.split("/").pop().split(".")[0],
       asset_folder: profilePictureFolder, // Organize by user ID in Cloudinary
       use_asset_folder_as_public_id_prefix: true,
       resource_type: "image", // For PDF/DOCX, 'raw' is often better than 'image' or 'video'
@@ -199,103 +202,210 @@ exports.uploadResume = catchAsync(async (req, res, next) => {
   if (!req.file) {
     return next(new AppError("No resume file uploaded.", 400));
   }
+
   const jobSeekerProfile = await JobSeekerProfile.findOne({
     user: req.user._id,
   });
   if (!jobSeekerProfile) {
-    // Clean up uploaded file if profile doesn't exist (edge case)
     fs.unlink(req.file.path, (err) => {
       if (err)
-        logger.error(`Failed to delete orphaned upload: ${req.file.path}`, err);
+        logger.error(
+          `Failed to delete orphaned temp upload: ${req.file.path}`,
+          err
+        );
     });
     return next(new AppError("Job Seeker profile not found.", 404));
   }
 
-  // 1. Upload to Cloudinary
-  let cloudinaryResult;
+  const bucket = await getGCPBucket();
+  const gcsResumeFolder = resumeFolder;
+  // Use a unique name for GCS, can be based on multer's generated filename or a new one
+  // req.file.filename is the name of the temporary local file
+  const gcsFileName = `${req.file.filename}`;
+  const gcsFilePath = `${gcsResumeFolder}/${gcsFileName}`;
+
   try {
-    cloudinaryResult = await cloudinary.uploader.upload(req.file.path, {
-      public_id: req.file.filename,
-      asset_folder: resumeFolder, // Organize by user ID in Cloudinary
-      use_asset_folder_as_public_id_prefix: true,
-      resource_type: "raw", // For PDF/DOCX, 'raw' is often better than 'image' or 'video'
-      // Eager transformations for PDF to image (optional, adds processing time)
-      // eager: [{ width: 400, height: 300, crop: "limit", format: "jpg" }]
+    // Delete old resume from GCS if it exists
+    if (jobSeekerProfile.resumeGCSPath) {
+      try {
+        await bucket
+          .file(jobSeekerProfile.resumeGCSPath)
+          .delete({ ignoreNotFound: true });
+        logger.info(
+          `Old resume deleted from GCS: ${jobSeekerProfile.resumeGCSPath}`
+        );
+      } catch (gcsDeleteError) {
+        logger.error(
+          `Failed to delete old resume from GCS: ${jobSeekerProfile.resumeGCSPath}`,
+          gcsDeleteError
+        );
+        // Continue, as this is not critical enough to stop new upload
+      }
+    }
+
+    // Upload to GCS
+    await bucket.upload(req.file.path, {
+      destination: gcsFilePath,
+      metadata: {
+        contentType: req.file.mimetype,
+        // Add any other metadata you need
+        metadata: {
+          originalFilename: req.file.originalname,
+          userId: req.user.id.toString(),
+          uploadTimestamp: new Date().toISOString(),
+        },
+      },
     });
-    successResponse(res, 200, "", cloudinaryResult);
-  } catch (error) {
-    // Clean up local file if Cloudinary upload fails
+    logger.info(`Resume uploaded to GCS: ${gcsFilePath}`);
+
+    // Update JobSeekerProfile
+    jobSeekerProfile.resumeGCSPath = gcsFilePath;
+    jobSeekerProfile.resumeOriginalName = req.file.originalname;
+    jobSeekerProfile.resumeMimeType = req.file.mimetype;
+    jobSeekerProfile.resumeLocalPath = req.file.path;
+    await jobSeekerProfile.save();
+
+    // Clean up the temporary local file after successful upload
     fs.unlink(req.file.path, (err) => {
       if (err)
         logger.error(
-          `Failed to delete local file after Cloudinary error: ${req.file.path}`,
+          `Failed to delete temp local resume after GCS upload: ${req.file.path}`,
           err
         );
     });
-    console.log(cloudinaryResult);
-    logger.error("Cloudinary Upload Error:", error);
-    return next(new AppError("Error uploading resume to cloud storage.", 500));
-  }
 
-  // 2. Update JobSeekerProfile with Cloudinary URL and local path
-  // Delete old resume from Cloudinary if it exists
-  if (jobSeekerProfile.resumeUrl) {
-    const publicId = jobSeekerProfile.resumeUrl.split("/").pop().split(".")[0]; // Simplistic public_id extraction
-    try {
-      // Attempt to derive public_id (this might need adjustment based on your Cloudinary folder structure)
-      // Example: if URL is .../${resumeFolder}/USER_ID/FILENAME.pdf, public_id is ${resumeFolder}/USER_ID/FILENAME
-      // The public_id for 'raw' files includes the folder.
-      const parts = jobSeekerProfile.resumeUrl.split("/");
-      const versionIndex = parts.findIndex(
-        (part) => part.startsWith("v") && /^\d+$/.test(part.substring(1))
-      );
-      let oldPublicId;
-      if (versionIndex !== -1 && parts.length > versionIndex + 1) {
-        oldPublicId = parts
-          .slice(versionIndex + 1)
-          .join("/")
-          .split(".")[0];
-        // If you stored with a folder like `${resumeFolder}`:
-        oldPublicId = `${resumeFolder}/${oldPublicId.split("/").pop()}`;
-      }
+    const user = await User.findById(req.user._id).populate({
+      path: "profile",
+      // Select specific fields from JobSeekerProfile if needed
+      // select: 'github linkedin portfolio location bio skills resumeGCSPath resumeOriginalName'
+    });
 
-      if (oldPublicId) {
-        await cloudinary.uploader.destroy(oldPublicId, {
-          resource_type: "raw",
-        });
-        logger.info(`Old resume deleted from Cloudinary: ${oldPublicId}`);
-      }
-    } catch (err) {
-      logger.error(
-        `Failed to delete old resume from Cloudinary: ${err.message}`
-      );
-    }
-  }
-  // Delete old local resume if it exists
-  if (
-    jobSeekerProfile.resumeLocalPath &&
-    fs.existsSync(jobSeekerProfile.resumeLocalPath)
-  ) {
-    fs.unlink(jobSeekerProfile.resumeLocalPath, (err) => {
+    return successResponse(res, 200, "Resume uploaded successfully.", user);
+  } catch (uploadError) {
+    logger.error("GCS Upload Error:", uploadError);
+    // Clean up the temporary local file if GCS upload fails
+    fs.unlink(req.file.path, (err) => {
       if (err)
         logger.error(
-          `Failed to delete old local resume: ${jobSeekerProfile.resumeLocalPath}`,
+          `Failed to delete temp local resume after GCS error: ${req.file.path}`,
           err
         );
-      else
-        logger.info(
-          `Old local resume deleted: ${jobSeekerProfile.resumeLocalPath}`
-        );
     });
+    // return next(new AppError("Error uploading resume to cloud storage.", 500));
+    return errorResponse(res, 500, "Error uploading resume to cloud storage.");
+  }
+});
+
+exports.downloadResume = catchAsync(async (req, res, next) => {
+  // Assuming the resume is for the currently logged-in job seeker
+  // Or for an admin/recruiter viewing a specific job seeker's resume
+  let seekerProfile;
+  let targetUserId = req.user.id; // Default to own resume
+
+  // If a recruiter/admin is downloading, they might provide a userId in params or query
+  // This part needs role checking and a way to identify the target job seeker
+  if (
+    (req.user.role == recruiterRole || req.user.role == adminRole) &&
+    req.params.userId
+  ) {
+    targetUserId = req.params.userId; // e.g., /api/v1/users/:userId/resume/download
+  } else if (req.user.role != jobseekerRole) {
+    return next(
+      new AppError(
+        "You are not authorized to download this resume or user not specified.",
+        403
+      )
+    );
   }
 
-  jobSeekerProfile.resumeUrl = cloudinaryResult.secure_url;
-  jobSeekerProfile.resumeLocalPath = req.file.path; // Store full path to local file
-  await jobSeekerProfile.save();
+  seekerProfile = await JobSeekerProfile.findOne({ user: targetUserId });
 
-  // Fetch the updated user with populated profile for the response
-  const user = await User.findById(req.user._id).populate("profile");
-  successResponse(res, 200, "Resume uploaded successfully.", user);
+  if (!seekerProfile || !seekerProfile.resumeGCSPath) {
+    // return next(new AppError('Resume not found for this user.', 404));
+    return errorResponse(res, 404, "Resume not found for this user.");
+  }
+
+  try {
+    const bucket = await getGCPBucket();
+    const file = bucket.file(seekerProfile.resumeGCSPath);
+
+    // Check if file exists in GCS (optional, getSignedUrl will fail if not)
+    const [exists] = await file.exists();
+    if (!exists) {
+      logger.warn(
+        `Resume file ${seekerProfile.resumeGCSPath} not found in GCS for user ${targetUserId}.`
+      );
+      return errorResponse(res, 404, "Resume file does not exist in storage.");
+    }
+
+    const [metadata] = await file.getMetadata();
+
+    // --- Streaming Logic ---
+    // For viewing in browser (inline):
+    // Content-Disposition: inline; filename="example.pdf"
+    // For forcing download (attachment):
+    // Content-Disposition: attachment; filename="example.pdf"
+
+    // Let's default to 'inline' for viewing, frontend can trigger download via link if needed
+    // The filename*=UTF-8'' part handles special characters in filenames robustly.
+    const dispositionType =
+      req.query.download === "true" ? "attachment" : "inline";
+    const encodedFilename = encodeURIComponent(
+      seekerProfile.resumeOriginalName || "resume.pdf"
+    );
+
+    res.setHeader(
+      "Content-Disposition",
+      `${dispositionType}; filename="${
+        seekerProfile.resumeOriginalName || "resume.pdf"
+      }"; filename*=UTF-8''${encodedFilename}`
+    );
+    res.setHeader(
+      "Content-Type",
+      metadata.contentType ||
+        seekerProfile.resumeMimeType ||
+        "application/octet-stream"
+    );
+    if (metadata.size) {
+      res.setHeader("Content-Length", metadata.size);
+    }
+
+    const readStream = file.createReadStream();
+
+    // Pipe the GCS read stream directly to the HTTP response stream
+    readStream.pipe(res);
+
+    readStream.on("error", (gcsStreamError) => {
+      logger.error(
+        `Error streaming resume ${seekerProfile.resumeGCSPath} from GCS:`,
+        gcsStreamError
+      );
+      // Important: If headers are already sent, you can't send a JSON error response.
+      // The connection might just break for the client.
+      // Best effort to end the response if possible.
+      if (!res.headersSent) {
+        return errorResponse(
+          res,
+          500,
+          "Error occurred while streaming the resume."
+        );
+      } else {
+        res.end(); // End the response if headers were already sent
+      }
+    });
+
+    readStream.on("end", () => {
+      logger.info(
+        `Resume ${seekerProfile.resumeGCSPath} streamed successfully to user ${req.user.id}.`
+      );
+      // Response is already finished by pipe, no need to call res.end() explicitly here
+    });
+  } catch (error) {
+    logger.error("Error preparing or streaming resume for download:", error);
+    if (!res.headersSent) {
+      return errorResponse(res, 500, "Failed to download resume.");
+    }
+  }
 });
 
 exports.deleteUser = catchAsync(async (req, res, next) => {

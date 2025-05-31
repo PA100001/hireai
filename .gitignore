@@ -111,3 +111,6 @@ uploads/
 
 # Optional VS Code files
 .vscode/
+
+# gcp credentials file
+gcp-service-account.json

@@ -1,5 +1,7 @@
 const dotenv = require('dotenv');
 dotenv.config(); // Load .env file
+const path = require('path');
+const HIRE_AI_SERVICE_ACCOUNT  = path.join(__dirname, ".." ,"..", process.env.HIRE_AI_SERVICE_ACCOUNT);
 
 module.exports = {
   env: process.env.NODE_ENV || 'development',
@@ -12,6 +14,8 @@ module.exports = {
     apiKey: process.env.CLOUDINARY_API_KEY,
     apiSecret: process.env.CLOUDINARY_API_SECRET,
   },
+  gcpServiceAccountKeyFile : HIRE_AI_SERVICE_ACCOUNT,
+  gcpBucketName: process.env.GCP_BUCKET_NAME || 'hireai',
   corsAllowedOrigins: process.env.CORS_ALLOWED_ORIGINS ? process.env.CORS_ALLOWED_ORIGINS.split(', ') : [],
   rateLimit: {
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '15', 10) * 60 * 1000, // minutes to ms

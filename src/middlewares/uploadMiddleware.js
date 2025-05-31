@@ -101,6 +101,21 @@ const handleResumeUpload = createUploadMiddleware({
     // Directory creation is handled by the wrapper in createUploadMiddleware's storage.destination
     cb(null, userResumeDir);
   },
+  filenameGenerator: (req, file, cb) => {
+    // Use req.user.id as the base filename and preserve the original extension
+    if (!req.user || !req.user.id) {
+      // Fallback if user ID is somehow not available (should be caught by auth middleware)
+      logger.warn('User ID not found in req.user for filename generation. Using default.');
+      // Call the default generator explicitly or implement a fallback.
+      // For simplicity here, we'll construct a basic unique name.
+      const fallbackName = `profile-${Date.now()}${path.extname(file.originalname)}`;
+      return cb(null, fallbackName);
+    }
+    const extension = path.extname(file.originalname); // e.g., '.jpg', '.png'
+    const filename = `${req.user.id}${extension}`; // e.g., 'USER_ID.jpg'
+    // const filename = req.user.id
+    cb(null, filename);
+  }
 });
 
 

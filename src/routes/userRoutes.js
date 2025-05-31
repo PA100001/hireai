@@ -42,6 +42,11 @@ router.post(
   handleResumeUpload, // 'resume' is the field name in form-data
   userController.uploadResume
 );
+router.get(
+  '/resume',
+  authMiddleware.restrictTo(jobseekerRole, recruiterRole, adminRole),
+  userController.downloadResume
+);
 router.post(
   '/avatar',
   authMiddleware.restrictTo(jobseekerRole, recruiterRole, adminRole),

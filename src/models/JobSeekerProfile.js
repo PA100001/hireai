@@ -10,8 +10,10 @@ const jobSeekerProfileSchema = new mongoose.Schema({
   github: String,
   linkedin: String,
   portfolio: String,
-  resumeUrl: String,
-  resumeLocalPath: String,
+  resumeGCSPath: String, // Full path in GCS bucket (e.g., 'resumes/USER_ID/filename.pdf')
+  resumeOriginalName: String, // Store the original uploaded filename
+  resumeMimeType: String,
+  resumeLocalPath: String, 
   location: {
     street: String,
     city: String,
