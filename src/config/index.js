@@ -17,6 +17,8 @@ module.exports = {
   gcpServiceAccountKeyFile : HIRE_AI_SERVICE_ACCOUNT,
   gcpBucketName: process.env.GCP_BUCKET_NAME || 'hireai',
   corsAllowedOrigins: process.env.CORS_ALLOWED_ORIGINS ? process.env.CORS_ALLOWED_ORIGINS.split(', ') : [],
+  AstraApiEndpoint: process.env.ASTRA_API_ENDPOINT,
+  AstraApplicationToken: process.env.ASTRA_APPLICATION_TOKEN,
   rateLimit: {
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '15', 10) * 60 * 1000, // minutes to ms
     maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100', 10),

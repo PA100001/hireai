@@ -31,7 +31,7 @@ const createSendToken = (user, statusCode, res) => {
 };
 
 exports.register = catchAsync(async (req, res, next) => {
-  const { name, email, password, role, companyName } = req.body;
+  const { name, email, password, role, companyName, phone } = req.body;
 
   if (role == adminRole) {
     return next(new AppError('Admin registration is not allowed through this endpoint.', 403));
@@ -41,6 +41,7 @@ exports.register = catchAsync(async (req, res, next) => {
     name,
     email,
     password,
+    phone,
     role,
     roleModel: role == jobseekerRole ? 'JobSeekerProfile' : 'RecruiterProfile'
   });

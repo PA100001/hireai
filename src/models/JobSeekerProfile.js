@@ -7,13 +7,21 @@ const jobSeekerProfileSchema = new mongoose.Schema({
     required: true,
     unique: true
   },
+
+  // Online presence
   github: String,
   linkedin: String,
   portfolio: String,
-  resumeGCSPath: String, // Full path in GCS bucket (e.g., 'resumes/USER_ID/filename.pdf')
-  resumeOriginalName: String, // Store the original uploaded filename
+  personalWebsite: String,
+  twitter: String,
+
+  // Resume Info
+  resumeGCSPath: String,
+  resumeOriginalName: String,
   resumeMimeType: String,
-  resumeLocalPath: String, 
+  resumeLocalPath: String,
+
+  // Personal Details
   location: {
     street: String,
     city: String,
@@ -21,13 +29,108 @@ const jobSeekerProfileSchema = new mongoose.Schema({
     country: String,
     zipCode: String,
   },
+
+  // Professional Summary
   bio: String,
-  skills: [String],
+  headline: String, // e.g., "Senior Backend Developer with 10+ years of experience"
+  currentJobTitle: String,
+  currentCompany: String,
+  noticePeriod: String, // e.g., "2 weeks", "1 month"
+
+  // Skills and Tools
+  skills: [String], // e.g., ['Node.js', 'React', 'MongoDB']
+  techStack: [String], // broader than skills, includes tools like Git, Docker, etc.
+  yearsOfExperience: Number,
+  seniorityLevel: {
+    type: String,
+    enum: ['Intern', 'Junior', 'Mid', 'Senior', 'Lead', 'Principal', 'Architect', 'Manager']
+  },
+
+  // Preferences
+  desiredJobTitle: String,
+  desiredEmploymentTypes: [String], // ['Full-time', 'Part-time', 'Contract', 'Freelance']
+  desiredIndustries: [String],
+  openToRemote: Boolean,
+  openToRelocation: Boolean,
+  preferredLocations: [String], // ["Berlin, Germany", "Remote", "New York, USA"]
+  salaryExpectation: {
+    min: Number,
+    max: Number,
+    currency: {
+      type: String,
+      default: 'USD'
+    },
+    period: {
+      type: String,
+      enum: ['year', 'month', 'hour']
+    }
+  },
+
+  // Experience
+  workExperience: [{
+    jobTitle: String,
+    company: String,
+    location: String,
+    startDate: Date,
+    endDate: Date,
+    currentlyWorking: Boolean,
+    description: String,
+    achievements: [String],
+    technologiesUsed: [String]
+  }],
+
+  // Education
+  education: [{
+    institution: String,
+    degree: String,
+    fieldOfStudy: String,
+    startDate: Date,
+    endDate: Date,
+    grade: String,
+    honors: String
+  }],
+
+  // Certifications
+  certifications: [{
+    name: String,
+    issuingOrganization: String,
+    issueDate: Date,
+    expirationDate: Date,
+    credentialId: String,
+    credentialURL: String
+  }],
+
+  // Languages
+  languages: [{
+    language: String,
+    proficiency: {
+      type: String,
+      enum: ['Basic', 'Conversational', 'Fluent', 'Native']
+    }
+  }],
+
+  // Projects (Portfolio)
+  projects: [{
+    name: String,
+    description: String,
+    technologies: [String],
+    link: String,
+    githubRepo: String,
+    startDate: Date,
+    endDate: Date
+  }],
+
+  // Availability
+  availableFrom: Date,
+  jobSearchStatus: {
+    type: String,
+    enum: ['Actively looking', 'Open to opportunities', 'Not looking', 'Employed, but open']
+  },
+
 }, { timestamps: true });
 
 // Text index for searching - include new location fields
 jobSeekerProfileSchema.index({
-  bio: 'text',
   skills: 'text',
   'location.city': 'text',
   'location.state': 'text',

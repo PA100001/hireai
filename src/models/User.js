@@ -22,6 +22,12 @@ const userSchema = new mongoose.Schema(
       minlength: 8,
       select: false, // Don't send back password by default
     },
+    phone: {
+      type: String,
+      required: [true, "Please provide a phone"],
+      minlength: 10,
+      select: false,
+    },
     role: {
       type: String,
       enum: [1, 2, 3],
