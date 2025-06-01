@@ -49,7 +49,7 @@ exports.getUserById = catchAsync(async (req, res, next) => {
     return next(new AppError('No user found with that ID', 404));
   }
 
-  successResponse(res, 200, ''. user)
+  successResponse(res, 200, '', user)
 });
 
 // PATCH: Admin updates a user
