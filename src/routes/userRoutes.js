@@ -16,17 +16,9 @@ router.get('/', userController.getMe);
 // Dynamic validation rules based on user role for updating profile
 router.patch(
   '/',
-  (req, res, next) => { // Middleware to inject role-specific validation
+  (req, res, next) => { 
     const rules = updateProfileRules(req.user.role);
-    // Apply validation rules dynamically
-    // This is a bit tricky; express-validator expects rules at route definition.
-    // A simpler way is to have separate update routes or handle validation inside controller.
-    // For MVP, let's assume controller handles partial updates gracefully & rules are broad.
-    // Better: create a middleware that runs the rules.
-    // Or, for MVP, we can just pass all possible profile fields and let Mongoose validation handle it.
-    // Let's create a small dynamic validator application
     const validationChain = updateProfileRules(req.user.role);
-    // Run each validator in the chain
     Promise.all(validationChain.map(validation => validation.run(req)))
       .then(() => next())
       .catch(next);
@@ -49,7 +41,7 @@ router.get(
 );
 router.post(
   '/avatar',
-  authMiddleware.restrictTo(jobseekerRole, recruiterRole, adminRole),
+  authMiddleware.restrictTo(jobseekerRole),
   handleProfilePictureUpload, // 'resume' is the field name in form-data
   userController.uploadProfilePicture
 );

@@ -1,23 +1,16 @@
-const JobSeekerProfile = require("../models/JobSeekerProfile");
-const User = require("../models/User");
-const catchAsync = require("../utils/catchAsync");
-const AppError = require("../utils/AppError");
-const {
-  successResponse,
-  errorResponse,
-} = require("../utils/standardApiResponse");
+const JobSeekerProfile = require('../models/JobSeekerProfile');
+const User = require('../models/User');
+const catchAsync = require('../utils/catchAsync');
+const AppError = require('../utils/AppError');
+const { successResponse, errorResponse } = require('../utils/standardApiResponse');
+const groq = require('../config/groq');
+const astraDbFunction = require('../config/datastaxAstra');
+const { resumeVectorSearchPrompt } = require('../promptMessages/resumeVectorSearchPrompt');
+const logger = require('../config/logger');
 
 exports.searchSeekers = catchAsync(async (req, res, next) => {
-  const {
-    keywords,
-    city,
-    state,
-    country,
-    location: generalLocation,
-    page = 1,
-    limit = 10,
-  } = req.query;
-
+  const { page = 1, limit = 10 } = req.query;
+  /*
   const query = {};
   const orLocationConditions = [];
 
@@ -135,5 +128,50 @@ exports.searchSeekers = catchAsync(async (req, res, next) => {
       seekers: seekersProfiles,
     },
   };
-  successResponse(res, 200, "", data);
+  */
+  const { userQuery } = req.body;
+  const data = await groq.chat.completions.create({
+    messages: [
+      {
+        role: 'system',
+        content: resumeVectorSearchPrompt,
+      },
+      {
+        role: 'user',
+        content: userQuery,
+      },
+    ],
+    model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+    temperature: 0.5,
+    max_completion_tokens: 1024,
+    top_p: 1,
+    stream: false,
+    response_format: {
+      type: 'json_object',
+    },
+    stop: null,
+  });
+
+  let queryFilter = JSON.parse(data.choices[0].message.content);
+  const vectorText = queryFilter.options.sort["$vectorize"];
+  delete queryFilter.options.sort["$vectorize"]
+  queryFilter.options.sort = {
+  $vectorize: vectorText
+  };
+  // console.dir(queryFilter, {depth: 4});
+  // console.dir({...queryFilter.filter}, {depth: 4});
+  // console.dir({...queryFilter.options}, {depth: 4});
+  const astraDb = astraDbFunction();
+  const collection = astraDb.collection(process.env.ASTRA_RESUME_COLLECTION_NAME);
+  try {
+    const cursor = await collection.find(
+      {...queryFilter.filter},
+      {...queryFilter.options}
+    );
+    const data = await cursor.toArray();
+    successResponse(res, 200, '', data);
+  } catch (error) {
+    logger.error(error);
+    return errorResponse(res, 500, '', error);
+  }
 });

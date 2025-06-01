@@ -8,6 +8,6 @@ const {jobseekerRole, recruiterRole, adminRole} = require('../constants')
 const router = express.Router();
 
 router.use(authMiddleware.protect, authMiddleware.restrictTo(recruiterRole, adminRole));
-router.get('/seekers', searchSeekersRules(), validate, recruiterController.searchSeekers);
+router.post('/seekers', searchSeekersRules(), validate, recruiterController.searchSeekers);
 
 module.exports = router;

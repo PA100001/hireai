@@ -333,8 +333,8 @@ exports.uploadResume = catchAsync(async (req, res, next) => {
     ],
     // model: 'meta-llama/llama-4-scout-17b-16e-instruct',
     model: 'meta-llama/llama-4-maverick-17b-128e-instruct',
-    temperature: 1,
-    max_completion_tokens: 1024,
+    temperature: 0.2,
+    max_completion_tokens: 1400,
     top_p: 1,
     stream: false,
     response_format: {
