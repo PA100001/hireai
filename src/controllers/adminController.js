@@ -55,7 +55,7 @@ exports.getUserById = catchAsync(async (req, res, next) => {
 // PATCH: Admin updates a user
 exports.updateUser = catchAsync(async (req, res, next) => {
   const { id } = req.params;
-  const { name, email, role, isActive, companyName, ...jobSeekerProfileUpdates } = req.body;
+  const { name, email, role, isActive, companyName} = req.body;
 
   // Fields that can be updated on the User model itself
   const userUpdateData = {};
@@ -77,7 +77,7 @@ exports.updateUser = catchAsync(async (req, res, next) => {
 
     // If new role is jobSeeker or recruiter, create a new profile
     if (role == jobseekerRole) {
-        const newProfile = await JobSeekerProfile.create({ user: id, location: {} });
+        const newProfile = await JobSeekerProfile.create({ user: id });
         userUpdateData.profile = newProfile._id;
         userUpdateData.roleModel = 'JobSeekerProfile';
     } else if (role == recruiterRole) {
@@ -105,11 +105,6 @@ exports.updateUser = catchAsync(async (req, res, next) => {
     return next(new AppError('No user found with that ID to update', 404)); // Should be caught by currentUser check
   }
 
-  // If the user is a jobSeeker and there are profile updates
-  if (updatedUser.role == jobseekerRole && Object.keys(jobSeekerProfileUpdates).length > 0) {
-    await JobSeekerProfile.findOneAndUpdate({ user: id }, jobSeekerProfileUpdates, { new: true, runValidators: true });
-    await updatedUser.populate('profile'); // Re-populate after profile update
-  }
   // If the user is a recruiter and companyName is being updated (and role didn't just change to recruiter)
   if (updatedUser.role == recruiterRole && companyName !== undefined && (role ? role == recruiterRole : true)) {
     await RecruiterProfile.findOneAndUpdate({ user: id }, { companyName }, { new: true, runValidators: true });
@@ -118,7 +113,6 @@ exports.updateUser = catchAsync(async (req, res, next) => {
 
   successResponse(res, 200, '', updatedUser)
 });
-
 
 // DELETE a user (soft delete by setting isActive to false, or hard delete)
 // For MVP, let's do a hard delete, but mention soft delete as an alternative

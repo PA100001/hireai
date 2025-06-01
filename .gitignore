@@ -114,3 +114,5 @@ uploads/
 
 # gcp credentials file
 gcp-service-account.json
+
+apiDoc.txt
