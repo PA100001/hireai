@@ -4,7 +4,7 @@ const User = require('../models/User');
 const AppError = require('../utils/AppError');
 const catchAsync = require('../utils/catchAsync');
 const config = require('../config');
-
+const {adminRole} = require('../constants')
 exports.protect = catchAsync(async (req, res, next) => {
   let token;
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {

@@ -20,43 +20,43 @@ const groq = require('../config/groq');
 const { extractTextFromPdfPromt } = require('../promptMessages/resumeParsingPrompt');
 
 async function storeJobSeekerProfileToAstra(jobSeekerProfile) {
-  const companies = jobSeekerProfile.workExperience?.map((exp) => exp.company) || [];
-  const jobTitles = jobSeekerProfile.workExperience?.map((exp) => exp.jobTitle) || [];
-  const projectTechnologies = jobSeekerProfile.projects?.flatMap((p) => p.technologies || []) || [];
-  const certificationNames = jobSeekerProfile.certifications?.map((c) => c.name) || [];
+  const companies = jobSeekerProfile?.workExperience?.map((exp) => exp.company) || [];
+  const jobTitles = jobSeekerProfile?.workExperience?.map((exp) => exp.jobTitle) || [];
+  const projectTechnologies = jobSeekerProfile?.projects?.flatMap((p) => p.technologies || []) || [];
+  const certificationNames = jobSeekerProfile?.certifications?.map((c) => c.name) || [];
 
   const data = {
-    id: req.user._id.toString(),
+    id: jobSeekerProfile.user.toString(),
     // Location
-    city: jobSeekerProfile.location?.city,
-    state: jobSeekerProfile.location?.state,
-    country: jobSeekerProfile.location?.country,
-    lat: jobSeekerProfile.location?.lat,
-    lon: jobSeekerProfile.location?.lon,
+    city: jobSeekerProfile?.location?.city,
+    state: jobSeekerProfile?.location?.state,
+    country: jobSeekerProfile?.location?.country,
+    lat: jobSeekerProfile?.location?.lat,
+    lon: jobSeekerProfile?.location?.lon,
     // Experience & Professional Level
-    yearsOfExperience: jobSeekerProfile.yearsOfExperience,
-    seniorityLevel: jobSeekerProfile.seniorityLevel,
+    yearsOfExperience: jobSeekerProfile?.yearsOfExperience,
+    seniorityLevel: jobSeekerProfile?.seniorityLevel,
 
     // Work Preferences
-    openToRemote: jobSeekerProfile.openToRemote,
-    openToRelocation: jobSeekerProfile.openToRelocation,
-    desiredEmploymentTypes: jobSeekerProfile.desiredEmploymentTypes,
-    desiredIndustries: jobSeekerProfile.desiredIndustries,
-    preferredLocations: jobSeekerProfile.preferredLocations,
+    openToRemote: jobSeekerProfile?.openToRemote,
+    openToRelocation: jobSeekerProfile?.openToRelocation,
+    desiredEmploymentTypes: jobSeekerProfile?.desiredEmploymentTypes,
+    desiredIndustries: jobSeekerProfile?.desiredIndustries,
+    preferredLocations: jobSeekerProfile?.preferredLocations,
 
     // Skills & Tech
-    skills: jobSeekerProfile.skills,
-    techStack: jobSeekerProfile.techStack,
+    skills: jobSeekerProfile?.skills,
+    techStack: jobSeekerProfile?.techStack,
 
     // Salary Expectations
-    salaryMin: jobSeekerProfile.salaryExpectation?.min,
-    salaryMax: jobSeekerProfile.salaryExpectation?.max,
-    salaryCurrency: jobSeekerProfile.salaryExpectation?.currency,
-    salaryPeriod: jobSeekerProfile.salaryExpectation?.period,
+    salaryMin: jobSeekerProfile?.salaryExpectation?.min,
+    salaryMax: jobSeekerProfile?.salaryExpectation?.max,
+    salaryCurrency: jobSeekerProfile?.salaryExpectation?.currency,
+    salaryPeriod: jobSeekerProfile?.salaryExpectation?.period,
 
     // Availability
-    availableFrom: jobSeekerProfile.availableFrom,
-    jobSearchStatus: jobSeekerProfile.jobSearchStatus,
+    availableFrom: jobSeekerProfile?.availableFrom,
+    jobSearchStatus: jobSeekerProfile?.jobSearchStatus,
 
     companies,
     jobTitles,
@@ -64,15 +64,14 @@ async function storeJobSeekerProfileToAstra(jobSeekerProfile) {
     certificationNames,
   };
 
-  const vectorText = `
-    Headline: ${jobSeekerProfile.headline || ''}
-    Bio: ${jobSeekerProfile.bio || ''}
-    Current Position: ${jobSeekerProfile.currentJobTitle || ''} at ${jobSeekerProfile.currentCompany || ''}
-    Skills: ${(jobSeekerProfile.skills || []).join(', ')}
-    Tech Stack: ${(jobSeekerProfile.techStack || []).join(', ')}
+  const vectorText = `Headline: ${jobSeekerProfile?.headline || ''}
+    Bio: ${jobSeekerProfile?.bio || ''}
+    Current Position: ${jobSeekerProfile?.currentJobTitle || ''} at ${jobSeekerProfile?.currentCompany || ''}
+    Skills: ${(jobSeekerProfile?.skills || []).join(', ')}
+    Tech Stack: ${(jobSeekerProfile?.techStack || []).join(', ')}
 
     Work Experience:
-    ${(jobSeekerProfile.workExperience || [])
+    ${(jobSeekerProfile?.workExperience || [])
       .map(
         (exp) => `
     ${exp.jobTitle} at ${exp.company} (${exp.startDate?.toISOString().slice(0, 10)} - ${
@@ -86,7 +85,7 @@ async function storeJobSeekerProfileToAstra(jobSeekerProfile) {
       .join('\n')}
 
     Projects:
-    ${(jobSeekerProfile.projects || [])
+    ${(jobSeekerProfile?.projects || [])
       .map(
         (proj) => `
     ${proj.name}: ${proj.description}
@@ -95,7 +94,7 @@ async function storeJobSeekerProfileToAstra(jobSeekerProfile) {
       .join('\n')}
 
     Certifications:
-    ${(jobSeekerProfile.certifications || [])
+    ${(jobSeekerProfile?.certifications || [])
       .map(
         (cert) => `
     ${cert.name} from ${cert.issuingOrganization} (Issued: ${cert.issueDate?.toISOString().slice(0, 10)})`
@@ -103,9 +102,9 @@ async function storeJobSeekerProfileToAstra(jobSeekerProfile) {
       .join('\n')}`;
 
   const astraDb = astraDbFunction();
-  const collection = astraDb.collection(process.env.ASTRA_RESUME_COLLECTION_NAME);
+  const collection = astraDb.collection(process.env.ASTRA_RESUME_COLLECTION_NAME); 
   try {
-    if (jobSeekerProfile.vectorId) {
+    if (jobSeekerProfile?.vectorId) {
       const result = await collection.findOneAndReplace(
         {
           _id: jobSeekerProfile.vectorId,
@@ -115,18 +114,18 @@ async function storeJobSeekerProfileToAstra(jobSeekerProfile) {
           $vectorize: vectorText,
         }
       );
-      logger.info('Previous Vector File Deleted');
+      logger.info('Previous Vector File Replaced');
+      return false
     } else {
       const result = await collection.insertOne({
         ...data,
         $vectorize: vectorText,
       });
-      jobSeekerProfile.vectorId = result.insertedId;
-      await jobSeekerProfile.save();
+      return result.insertedId;
     }
   } catch (error) {
     logger.error(error);
-    return errorResponse(res, 500, '', error);
+    throw new Error('Error in Astra DB vector upload')
   }
 }
 
@@ -142,95 +141,84 @@ exports.getMe = catchAsync(async (req, res, next) => {
 });
 
 exports.updateMe = catchAsync(async (req, res, next) => {
-  const { name, email } = req.body;
-  const profileUpdates = JSON.parse(req.body.profileUpdates);
-  const userId = req.user._id;
-  const updatedUserFields = {};
-  if (name) updatedUserFields.name = name;
-  if (email && email !== req.user.email) {
-    // Check if email is being changed
-    // Add validation for email uniqueness if it's being changed
-    const existingUser = await User.findOne({ email });
-    if (existingUser && existingUser._id.toString() !== userId) {
-      return next(new AppError('This email address is already in use.', 400));
+  try {
+    const { name, email } = req.body;
+    let profileUpdates;
+    try {
+      profileUpdates = JSON.parse(req.body.profileUpdates);
+    } catch (e) {
+      return next(new AppError('Invalid profileUpdates JSON format', 400));
     }
-    updatedUserFields.email = email;
-  }
-
-  if (Object.keys(updatedUserFields).length > 0) {
-    await User.findByIdAndUpdate(userId, updatedUserFields, {
-      new: true,
-      runValidators: true,
-    });
-  }
-
-  let updatedProfile;
-  if (req.user.role == jobseekerRole) {
-    // updatedProfile = await JobSeekerProfile.findOneAndUpdate(
-    //   { user: userId },
-    //   {
-    //     ...profileUpdates,
-    //     location: {
-    //       street:
-    //         profileUpdates.location.street || req.user.profile.location.street,
-    //       city: profileUpdates.location.city || req.user.profile.location.city,
-    //       state:
-    //         profileUpdates.location.state || req.user.profile.location.state,
-    //       country:
-    //         profileUpdates.location.country ||
-    //         req.user.profile.location.country,
-    //       zipCode:
-    //         profileUpdates.location.zipCode ||
-    //         req.user.profile.location.zipCode,
-    //     },
-    //   }, // Ensure location object is handled
-    //   { new: true, runValidators: true, upsert: false } // upsert: false as profile should exist
-    // );
-
     const userId = req.user._id;
-    updatedProfile = await JobSeekerProfile.findOneAndUpdate(
-      { user: userId },
-      { $set: { ...profileUpdates } },
-      { new: true, runValidators: true, context: 'query' }
-    );
-    storeJobSeekerProfileToAstra(updatedProfile);
-    if (!updatedProfile) {
-      // This can happen if the JobSeekerProfile was somehow deleted or never created.
-      // At registration, a profile should always be created.
-      logger.warn(`JobSeekerProfile not found for user ${userId} during update. Creating one.`);
-      updatedProfile = await JobSeekerProfile.create({
-        user: userId,
-        ...profileUpdates,
-        // Populate default email/fullName from user if not in profileUpdates
-        email: profileUpdates.email || req.user.email,
-        fullName: profileUpdates.fullName || userUpdateFields.name || req.user.name,
-      });
-      storeJobSeekerProfileToAstra(updatedProfile);
+    const updatedUserFields = {};
+    if (name) updatedUserFields.name = name;
+    if (email && email !== req.user.email) {
+      // Check if email is being changed
+      // Add validation for email uniqueness if it's being changed
+      const existingUser = await User.findOne({ email });
+      if (existingUser && existingUser._id.toString() !== userId) {
+        return next(new AppError('This email address is already in use.', 400));
+      }
+      updatedUserFields.email = email;
     }
-  } else if (req.user.role == recruiterRole) {
-    // updatedProfile = await RecruiterProfile.findOneAndUpdate({ user: userId }, profileUpdates, { new: true, runValidators: true, upsert: false });
-    updatedProfile = await RecruiterProfile.findOneAndUpdate(
-      { user: userId },
-      { $set: profileUpdates },
-      { new: true, runValidators: true, upsert: false, context: 'query' }
-    );
-    if (!updatedProfile) {
-      logger.warn(`RecruiterProfile not found for user ${userId} during update. Creating one.`);
-      updatedProfile = await RecruiterProfile.create({
-        user: userId,
-        ...profileUpdates,
+
+    if (Object.keys(updatedUserFields).length > 0) {
+      await User.findByIdAndUpdate(userId, updatedUserFields, {
+        new: true,
+        runValidators: true,
       });
     }
-  }
-  // Admins do not have a separate 'profile' document to update via this route in this MVP setup
+    let updatedProfile;
+    if (req.user.role == jobseekerRole) {
+      updatedProfile = await JobSeekerProfile.findOneAndUpdate(
+        { user: userId },
+        { $set: { ...profileUpdates } },
+        { new: true, runValidators: true, context: 'query' }
+      );
+      if (!updatedProfile) {
+        // This can happen if the JobSeekerProfile was somehow deleted or never created.
+        // At registration, a profile should always be created.
+        logger.warn(`JobSeekerProfile not found for user ${userId} during update. Creating one.`);
+        updatedProfile = await JobSeekerProfile.create({
+          user: userId,
+          ...profileUpdates,
+        });
+      }
+      const vectorId = await storeJobSeekerProfileToAstra(updatedProfile);
+      if(vectorId) {
+        updatedProfile = await JobSeekerProfile.findOneAndUpdate(
+        { user: userId },
+        { $set: {vectorId} },
+        { new: true, runValidators: true, upsert: false, context: 'query' }
+      );
+      }
+    } else if (req.user.role == recruiterRole) {
+      // updatedProfile = await RecruiterProfile.findOneAndUpdate({ user: userId }, profileUpdates, { new: true, runValidators: true, upsert: false });
+      updatedProfile = await RecruiterProfile.findOneAndUpdate(
+        { user: userId },
+        { $set: profileUpdates },
+        { new: true, runValidators: true, upsert: false, context: 'query' }
+      );
+      if (!updatedProfile) {
+        logger.warn(`RecruiterProfile not found for user ${userId} during update. Creating one.`);
+        updatedProfile = await RecruiterProfile.create({
+          user: userId,
+          ...profileUpdates,
+        });
+      }
+    }
+    // Admins do not have a separate 'profile' document to update via this route in this MVP setup
 
-  if ((req.user.role == jobseekerRole || req.user.role == recruiterRole) && !updatedProfile) {
-    // This should ideally not happen if profile is created at registration
-    return next(new AppError('Profile not found for this user.', 404));
-  }
+    if ((req.user.role == jobseekerRole || req.user.role == recruiterRole) && !updatedProfile) {
+      // This should ideally not happen if profile is created at registration
+      return next(new AppError('Profile not found for this user.', 404));
+    }
 
-  const user = await User.findById(userId).populate('profile');
-  successResponse(res, 200, '', user);
+    const user = await User.findById(userId).populate('profile');
+    successResponse(res, 200, '', user);
+  } catch (error) {
+    errorResponse(res, 500, error.message, error);
+  }
 });
 
 exports.uploadProfilePicture = catchAsync(async (req, res, next) => {
@@ -349,7 +337,7 @@ exports.uploadResume = catchAsync(async (req, res, next) => {
     { $set: updateJobSeekerData },
     { new: true, runValidators: true, context: 'query' }
   );
-  storeJobSeekerProfileToAstra(updatedProfile);
+  await storeJobSeekerProfileToAstra(updatedProfile);
 
   const bucket = await getGCPBucket();
   const gcpResumeFolder = resumeFolder;

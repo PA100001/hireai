@@ -35,14 +35,10 @@ exports.updateProfileRules = (role) => {
       body('location.country').optional().isString().trim(),
       body('location.zipCode').optional().isString().trim().isPostalCode('any').withMessage('Invalid zip code'), 
       body('bio').optional().isString(),
-      body('skills').optional().isArray().withMessage('Skills must be an array')
-        .custom((skills) => skills.every(skill => typeof skill === 'string' && skill.trim() !== ''))
-        .withMessage('All skills must be non-empty strings'),
     );
   } else if (role == recruiterRole) {
     rules.push(
       body('companyName').optional().notEmpty().withMessage('Company name cannot be empty'),
-      body('companyWebsite').optional().isURL().withMessage('Invalid company website URL'),
     );
   }
   return rules;
@@ -51,8 +47,6 @@ exports.updateProfileRules = (role) => {
 
 
 exports.searchSeekersRules = () => [
-    query('location').optional().isString().trim(),
-    query('keywords').optional().isString().trim(),
     query('page').optional().isInt({ min: 1 }).toInt(),
     query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
 ];

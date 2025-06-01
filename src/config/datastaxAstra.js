@@ -32,5 +32,12 @@ function connectAstra(){
 // })();
   return db;
 }
-
+// const astraDb = connectAstra();
+//   const collection = astraDb.collection("resume"); 
+// (async function () {
+//   const result = await collection.insertOne({
+//     name: "Jane Doe",
+//     $vectorize: "Text to vectorize",
+//   });
+// })();
 module.exports = connectAstra
