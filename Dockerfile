@@ -1,18 +1,20 @@
-# Use official Node image
+# Use the official Node.js image
 FROM node:18
 
-# Set working directory
+# Create app directory
 WORKDIR /app
 
-# Install dependencies
+# Copy package.json and package-lock.json
 COPY package*.json ./
+
+# Install dependencies
 RUN npm install
 
-# Copy source files
+# Copy the rest of the application code
 COPY . .
 
-# Expose backend port (adjust if needed)
+# Expose the port defined in .env (3000)
 EXPOSE 8080
 
-# Run the app
+# Start the app
 CMD ["npm", "start"]
