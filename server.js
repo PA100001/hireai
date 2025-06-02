@@ -7,8 +7,9 @@ const logger = require('./src/config/logger');
 // Connect to Database
 connectDB();
 const PORT = process.env.PORT || 8080;
+const HOST = '0.0.0.0';
 
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT,HOST, () => {
   logger.info(`App running on port ${PORT}... in ${config.env} mode.`);
 });
 
