@@ -1,8 +1,8 @@
 const dotenv = require('dotenv');
 dotenv.config(); // Load .env file
 const path = require('path');
-const HIRE_AI_SERVICE_ACCOUNT  = path.join(__dirname, ".." ,"..", process.env.HIRE_AI_SERVICE_ACCOUNT);
-
+const {rootPath} = require('../constants')
+const HIRE_AI_SERVICE_ACCOUNT  = path.join(rootPath, process.env.HIRE_AI_SERVICE_ACCOUNT);
 module.exports = {
   env: process.env.NODE_ENV || 'development',
   port: process.env.PORT || 8080,
