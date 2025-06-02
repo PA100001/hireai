@@ -6,9 +6,10 @@ const logger = require('./src/config/logger');
 
 // Connect to Database
 connectDB();
+const PORT = process.env.PORT || 8080;
 
-const server = app.listen(config.port, () => {
-  logger.info(`App running on port ${config.port}... in ${config.env} mode.`);
+const server = app.listen(PORT, () => {
+  logger.info(`App running on port ${PORT}... in ${config.env} mode.`);
 });
 
 // Handle unhandled promise rejections
