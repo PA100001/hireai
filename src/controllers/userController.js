@@ -132,7 +132,7 @@ async function storeJobSeekerProfileToAstra(jobSeekerProfile) {
 exports.getMe = catchAsync(async (req, res, next) => {
   // req.user is populated by the 'protect' middleware, including the profile
   if (!req.user) {
-    return next(new AppError('User not found. This should not happen if protect middleware is working.', 404));
+    return errorResponse(res, 404, 'User not found');
   }
   const data = {
     user: req.user,
